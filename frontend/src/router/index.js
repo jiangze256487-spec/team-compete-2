@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { titleFor } from '@/constants/titles'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
@@ -13,13 +14,21 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0 }
+  }
 })
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.token) return { name: 'login' }
   if (to.name === 'login' && auth.token) return { name: 'home' }
+})
+
+router.afterEach((to) => {
+  document.title = `${titleFor(to.name)} - CompeteMate`
 })
 
 export default router

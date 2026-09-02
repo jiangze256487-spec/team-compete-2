@@ -4,7 +4,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..core.deps import get_current_user
+from ..core.deps import get_current_user, get_optional_user
 from ..database import get_db
 from ..models import Notification, Team, TeamApplication, TeamMember, User
 from ..schemas import ApplyResult, MemberBrief, TeamCreate, TeamDetail, TeamOut, TeamUpdate
@@ -66,8 +66,10 @@ def list_teams(
     result = []
     for t in teams:
         data = _serialize_team(db, t)
-        if search and search not in t.name and search not in t.desc:
-            continue
+        if search:
+            haystack = f"{t.name} {t.desc} {t.event_name} {' '.join(_load_json(t.tags))}"
+            if search not in haystack:
+                continue
         if event and t.event_name != event:
             continue
         if skill and skill not in _load_json(t.tags):
@@ -103,11 +105,23 @@ def create_team(data: TeamCreate, user: User = Depends(get_current_user), db: Se
 
 
 @router.get("/{team_id}", response_model=TeamDetail)
-def get_team(team_id: int, db: Session = Depends(get_db)):
+def get_team(
+    team_id: int,
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    return _serialize_detail(db, team)
+    data = _serialize_detail(db, team)
+    if user is not None:
+        applied = db.query(TeamApplication).filter(
+            TeamApplication.team_id == team_id,
+            TeamApplication.user_id == user.id,
+            TeamApplication.status == "pending",
+        ).first()
+        data["my_application_status"] = "pending" if applied else ""
+    return data
 
 
 @router.patch("/{team_id}", response_model=TeamDetail)

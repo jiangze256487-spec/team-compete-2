@@ -1,15 +1,40 @@
 <script setup>
-defineProps({
+import { watch, onUnmounted } from 'vue'
+
+const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '' },
   width: { type: String, default: '480px' }
 })
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue'])
+
+function close() {
+  emit('update:modelValue', false)
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') close()
+}
+
+watch(() => props.modelValue, (open) => {
+  if (open) {
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKeydown)
+  } else {
+    document.body.style.overflow = ''
+    window.removeEventListener('keydown', onKeydown)
+  }
+})
+
+onUnmounted(() => {
+  document.body.style.overflow = ''
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
-  <div v-if="modelValue" class="modal-backdrop" @click.self="$emit('update:modelValue', false)">
-    <div class="modal" :style="{ width }">
+  <div v-if="modelValue" class="modal-backdrop" @click.self="close">
+    <div class="modal" role="dialog" aria-modal="true" :aria-label="title || '弹窗'">
       <h2 v-if="title" class="text-xl font-bold text-ink-primary mb-6">{{ title }}</h2>
       <slot />
     </div>
