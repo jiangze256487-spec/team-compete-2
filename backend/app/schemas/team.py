@@ -32,6 +32,8 @@ class TeamOut(BaseModel):
 
 class TeamDetail(TeamOut):
     members: list[MemberBrief] = []
+    # 当前登录用户对该队伍的申请状态（"" / pending），供前端展示"已申请，等待审核"
+    my_application_status: str = ""
 
 
 class TeamCreate(BaseModel):
