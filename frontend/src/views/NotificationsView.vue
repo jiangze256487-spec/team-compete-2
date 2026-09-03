@@ -43,7 +43,7 @@ async function load() {
   try {
     notifications.value = await notiApi.list({})
   } catch (e) {
-    toast.show(e, 'error')
+    toast.show(e)
   } finally {
     loading.value = false
   }
@@ -64,7 +64,7 @@ async function handleNotiAction(n, action) {
     toast.show(action === 'accept' ? '已接受' : '已拒绝')
     load()
   } catch (e) {
-    toast.show(e, 'error')
+    toast.show(e)
   }
 }
 
@@ -111,7 +111,6 @@ onMounted(load)
         <svg class="w-10 h-10 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
       </div>
       <p class="text-ink-muted">暂无通知</p>
-      <p class="text-xs text-ink-muted mt-1">组队动态会实时通知你</p>
     </div>
   </div>
 </template>

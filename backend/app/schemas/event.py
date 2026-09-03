@@ -11,7 +11,6 @@ class EventOut(BaseModel):
     org: str = ""
     desc: str = ""
     deadline: str = ""
-    teams_count: int = 0
 
     model_config = {"from_attributes": True}
 
