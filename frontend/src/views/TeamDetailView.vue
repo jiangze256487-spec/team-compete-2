@@ -2,11 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { teamApi } from '@/api/teams'
-import { eventApi } from '@/api/events'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth'
-import { allSkillTags } from '@/constants/tags'
-import Modal from '@/components/Modal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,27 +13,17 @@ const auth = useAuthStore()
 const team = ref(null)
 const loading = ref(true)
 const applying = ref(false)
-const leaving = ref(false)
-const events = ref([])
-const categories = ref([])
-
-// 赛事下拉：优先真实赛事；数据库暂无赛事时回退到赛事分类
-const eventOptions = computed(() =>
-  events.value.length ? events.value.map((e) => e.name) : categories.value
-)
 
 const isLeader = computed(() => team.value && team.value.leader_id === auth.user?.id)
 const isMember = computed(() => team.value && (team.value.members || []).some((m) => m.user_id === auth.user?.id))
 const vacancies = computed(() => (team.value ? team.value.max_members - team.value.members_count : 0))
-const isFull = computed(() => team.value && (team.value.status === '已满' || vacancies.value <= 0))
-const hasPendingApply = computed(() => team.value?.my_application_status === 'pending')
 
 async function load() {
   loading.value = true
   try {
     team.value = await teamApi.detail(route.params.id)
   } catch (e) {
-    toast.show(e, 'error')
+    toast.show(e)
   } finally {
     loading.value = false
   }
@@ -47,16 +34,14 @@ async function applyToTeam() {
   try {
     const res = await teamApi.apply(team.value.id)
     toast.show(res.message || '已发送入队申请')
-    team.value.my_application_status = 'pending'
   } catch (e) {
-    toast.show(e, 'error')
+    toast.show(e)
   } finally {
     applying.value = false
   }
 }
 
 async function leaveTeam() {
-  leaving.value = true
   try {
     const res = await teamApi.leave(team.value.id)
     toast.show(res.message || '已退出队伍')
@@ -143,6 +128,7 @@ async function sendInvite() {
     showInvite.value = false
   } catch (e) {
     toast.show(e, 'error')
+    toast.show(e)
   }
 }
 
@@ -164,7 +150,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="p-4 md:p-8 max-w-4xl">
+  <div class="p-8 max-w-4xl">
     <button class="flex items-center gap-1 text-sm text-ink-secondary hover:text-primary mb-6" @click="router.push('/teams')">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       返回组队广场
@@ -191,7 +177,7 @@ onMounted(load)
       <div class="grid grid-cols-3 gap-4 mb-6 p-4 bg-page rounded-xl">
         <div class="text-center"><div class="text-2xl font-bold text-primary">{{ team.members_count }}</div><div class="text-xs text-ink-muted">当前人数</div></div>
         <div class="text-center border-x border-line"><div class="text-2xl font-bold text-ink-primary">{{ team.max_members }}</div><div class="text-xs text-ink-muted">队伍上限</div></div>
-        <div class="text-center"><div class="text-2xl font-bold text-cta">{{ Math.max(vacancies, 0) }}</div><div class="text-xs text-ink-muted">空缺名额</div></div>
+        <div class="text-center"><div class="text-2xl font-bold text-cta">{{ vacancies }}</div><div class="text-xs text-ink-muted">空缺名额</div></div>
       </div>
 
       <div class="mb-6">
@@ -226,20 +212,9 @@ onMounted(load)
         </div>
       </div>
 
-      <!-- 操作区：队长 / 成员 / 游客 三种身份五态 -->
       <div class="flex gap-3">
-        <template v-if="isLeader">
-          <button class="btn-primary flex-1 py-3" @click="openManage">管理队伍</button>
-          <button class="btn-outline flex-1 py-3" @click="showInvite = true">邀请成员</button>
-        </template>
-        <template v-else-if="isMember">
-          <button class="btn-outline flex-1 py-3" :disabled="leaving" @click="leaveTeam">{{ leaving ? '退出中...' : '退出队伍' }}</button>
-        </template>
-        <template v-else>
-          <button v-if="isFull" class="btn-outline flex-1 py-3 opacity-60 cursor-not-allowed" disabled>队伍已满</button>
-          <button v-else-if="hasPendingApply" class="btn-outline flex-1 py-3 opacity-60 cursor-not-allowed" disabled>已申请，等待审核</button>
-          <button v-else class="btn-cta flex-1 py-3" :disabled="applying" @click="applyToTeam">{{ applying ? '申请中...' : '申请加入' }}</button>
-        </template>
+        <button v-if="!isMember" class="btn-cta flex-1 py-3" :disabled="applying" @click="applyToTeam">申请加入</button>
+        <button v-else class="btn-outline flex-1 py-3" @click="leaveTeam">退出队伍</button>
       </div>
     </div>
 

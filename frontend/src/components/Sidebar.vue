@@ -35,7 +35,20 @@ onMounted(() => {
 onUnmounted(() => {
   stopPoll()
   document.removeEventListener('visibilitychange', onVisibilityChange)
+async function fetchUnread() {
+  try {
+    const list = await notiApi.list({ unread_only: true })
+    unreadCount.value = list?.length || 0
+  } catch (e) {
+    unreadCount.value = 0
+  }
+}
+
+onMounted(() => {
+  fetchUnread()
+  pollTimer = setInterval(fetchUnread, 15000)
 })
+onUnmounted(() => clearInterval(pollTimer))
 
 const navItems = [
   { name: 'home', label: '首页', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -51,7 +64,7 @@ function isActive(name) {
 </script>
 
 <template>
-  <aside class="hidden lg:flex w-60 bg-white border-r border-line flex-col flex-shrink-0">
+  <aside class="w-60 bg-white border-r border-line flex flex-col flex-shrink-0">
     <div class="p-5 border-b border-line">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl gradient-brand flex items-center justify-center">
