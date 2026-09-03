@@ -3,20 +3,24 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { teamApi } from '@/api/teams'
 import { eventApi } from '@/api/events'
+import { useToastStore } from '@/stores/toast'
 import TeamCard from '@/components/TeamCard.vue'
 
 const router = useRouter()
+const toast = useToastStore()
 
 const searchQuery = ref('')
 const bannerIndex = ref(0)
 const selectedCategory = ref('全部')
 let bannerTimer = null
 
-const banners = [
+const fallbackBanners = [
   { title: '2026 全国大学生数学建模竞赛', desc: '报名倒计时 15 天 · 已有 328 支队伍参赛' },
   { title: 'ACM-ICPC 2026 赛季启动', desc: '新赛季新挑战，寻找你的最佳搭档' },
   { title: '挑战杯 · 创新赛道开启', desc: '跨学科组队，碰撞创新火花' }
 ]
+
+const banners = ref([...fallbackBanners])
 
 const eventCategories = ref(['全部'])
 const events = ref([])
@@ -38,7 +42,16 @@ async function load() {
     ])
     eventCategories.value = ['全部', ...(cats || []).map((c) => c.name)]
     events.value = evts || []
-    teams.value = teamRes?.items || teamRes || []
+    teams.value = teamRes || []
+    // 轮播数据优先取真实赛事，无数据时回退静态文案
+    const fromEvents = (evts || []).slice(0, 3).map((e) => ({
+      title: e.name,
+      desc: [e.org, e.deadline].filter(Boolean).join(' · ')
+    }))
+    banners.value = fromEvents.length ? fromEvents : fallbackBanners
+    bannerIndex.value = 0
+  } catch (e) {
+    toast.show(e, 'error')
   } finally {
     loading.value = false
   }
@@ -48,22 +61,26 @@ function goSearch() {
   router.push({ name: 'teams', query: searchQuery.value ? { q: searchQuery.value } : {} })
 }
 
+function goEventTeams(eventName) {
+  router.push({ name: 'teams', query: { event: eventName } })
+}
+
 onMounted(() => {
   load()
   bannerTimer = setInterval(() => {
-    bannerIndex.value = (bannerIndex.value + 1) % banners.length
+    bannerIndex.value = (bannerIndex.value + 1) % banners.value.length
   }, 4000)
 })
 onUnmounted(() => clearInterval(bannerTimer))
 </script>
 
 <template>
-  <div class="p-8 max-w-6xl">
+  <div class="p-4 md:p-8 max-w-6xl">
     <!-- Search -->
     <div class="mb-8">
       <div class="relative max-w-xl">
         <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-        <input v-model="searchQuery" type="text" class="input-field pl-11 pr-4 py-3 text-base" placeholder="搜索赛事、队伍或队友标签..." @keyup.enter="goSearch">
+        <input v-model="searchQuery" type="text" class="input-field pl-11 pr-4 py-3 text-base" placeholder="搜索队伍、赛事或标签..." @keyup.enter="goSearch">
       </div>
     </div>
 
@@ -87,10 +104,10 @@ onUnmounted(() => clearInterval(bannerTimer))
         <h2 class="text-xl font-bold text-ink-primary">推荐队伍</h2>
         <router-link :to="{ name: 'teams' }" class="text-sm text-primary font-medium cursor-pointer hover:underline">查看全部 →</router-link>
       </div>
-      <div v-if="loading" class="grid grid-cols-3 gap-5">
+      <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         <div v-for="i in 3" :key="i" class="card p-5"><div class="skeleton h-4 mb-3 w-2/3"></div><div class="skeleton h-3 mb-2"></div><div class="skeleton h-3 mb-4 w-4/5"></div><div class="skeleton h-3 w-1/2"></div></div>
       </div>
-      <div v-else class="grid grid-cols-3 gap-5">
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         <TeamCard v-for="team in teams.slice(0, 3)" :key="team.id" :team="team" />
       </div>
     </section>
@@ -104,11 +121,11 @@ onUnmounted(() => clearInterval(bannerTimer))
             :class="selectedCategory === cat ? 'tag-indigo' : 'tag-gray'" @click="selectedCategory = cat">{{ cat }}</span>
         </div>
       </div>
-      <div v-if="loading" class="grid grid-cols-2 gap-4">
+      <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div v-for="i in 4" :key="i" class="card p-5"><div class="skeleton h-12 w-12 mb-3"></div><div class="skeleton h-4 mb-2"></div><div class="skeleton h-3 w-3/4"></div></div>
       </div>
-      <div v-else class="grid grid-cols-2 gap-4">
-        <div v-for="event in filteredEvents" :key="event.id" class="card card-hover p-5 flex gap-4">
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div v-for="event in filteredEvents" :key="event.id" class="card card-hover p-5 flex gap-4 cursor-pointer" @click="goEventTeams(event.name)">
           <div class="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-lg gradient-brand">{{ (event.name || '赛')[0] }}</div>
           <div class="flex-1 min-w-0">
             <h3 class="font-semibold text-ink-primary mb-1 truncate">{{ event.name }}</h3>

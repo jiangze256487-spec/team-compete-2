@@ -23,3 +23,16 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在")
     return user
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """可选的当前用户：未登录或 token 无效时返回 None，不抛异常（用于公开接口的个性化数据）"""
+    if credentials is None:
+        return None
+    user_id = decode_token(credentials.credentials)
+    if user_id is None:
+        return None
+    return db.get(User, int(user_id))
