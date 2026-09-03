@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Event, EventCategory, Team
+from ..models import Event, EventCategory
 from ..schemas import CategoryOut, EventCreate, EventOut
 
 router = APIRouter(prefix="/api/events", tags=["赛事"])
@@ -19,20 +19,7 @@ def list_events(category: str = "", db: Session = Depends(get_db)):
     query = db.query(Event)
     if category:
         query = query.filter(Event.category == category)
-    events = query.order_by(Event.created_at.desc()).all()
-    result = []
-    for ev in events:
-        data = {
-            "id": ev.id,
-            "name": ev.name,
-            "category": ev.category,
-            "org": ev.org,
-            "desc": ev.desc,
-            "deadline": ev.deadline,
-            "teams_count": db.query(Team).filter(Team.event_name == ev.name).count(),
-        }
-        result.append(data)
-    return result
+    return query.order_by(Event.created_at.desc()).all()
 
 
 @router.post("", response_model=EventOut, status_code=201)
