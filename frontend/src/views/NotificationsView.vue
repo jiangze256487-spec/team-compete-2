@@ -2,8 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { notiApi } from '@/api/notifications'
 import { useToastStore } from '@/stores/toast'
+import { useNotiStore } from '@/stores/notifications'
 
 const toast = useToastStore()
+const notiStore = useNotiStore()
 
 const notiTab = ref('all')
 const notiTabs = [
@@ -14,6 +16,7 @@ const notiTabs = [
 ]
 const notifications = ref([])
 const loading = ref(true)
+const processingId = ref(0)
 
 const iconMap = {
   team: { bg: '#EEF2FF', color: '#4F46E5', path: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z' },
@@ -54,17 +57,28 @@ async function markRead(n) {
   n.is_read = true
   try {
     await notiApi.markRead(n.id)
-  } catch (e) { /* 静默 */ }
+    notiStore.fetchUnread()
+  } catch (e) {
+    // 标记失败时回滚本地状态，避免界面与后端不一致（红点不消失）
+    n.is_read = false
+    toast.show(e, 'error')
+  }
 }
 
 async function handleNotiAction(n, action) {
+  if (processingId.value) return
+  processingId.value = n.id
   try {
     await notiApi.action(n.id, action)
     n.is_read = true
+    n.action_type = '' // 已处理，立即隐藏操作按钮
     toast.show(action === 'accept' ? '已接受' : '已拒绝')
+    notiStore.fetchUnread()
     load()
   } catch (e) {
     toast.show(e, 'error')
+  } finally {
+    processingId.value = 0
   }
 }
 
@@ -100,8 +114,14 @@ onMounted(load)
           <span class="text-xs text-ink-muted mt-1 block">{{ timeStr(n.created_at) }}</span>
         </div>
         <div v-if="n.action_type" class="flex gap-2 flex-shrink-0">
-          <button class="text-xs font-medium px-3 py-1.5 rounded-md gradient-brand text-white" @click.stop="handleNotiAction(n, 'accept')">接受</button>
-          <button class="text-xs font-medium px-3 py-1.5 rounded-md border border-line text-ink-secondary" @click.stop="handleNotiAction(n, 'decline')">拒绝</button>
+          <button class="text-xs font-medium px-3 py-1.5 rounded-md gradient-brand text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'accept')">
+            {{ processingId === n.id ? '处理中...' : '接受' }}
+          </button>
+          <button class="text-xs font-medium px-3 py-1.5 rounded-md border border-line text-ink-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'decline')">
+            {{ processingId === n.id ? '处理中...' : '拒绝' }}
+          </button>
         </div>
       </div>
     </div>

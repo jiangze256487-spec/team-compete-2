@@ -72,6 +72,7 @@ async function leaveTeam() {
 const showManage = ref(false)
 const showInvite = ref(false)
 const saving = ref(false)
+const removingId = ref(0)
 const inviteId = ref('')
 const editForm = ref({ name: '', event_name: '', max_members: 4, desc: '', tags: [] })
 
@@ -142,6 +143,20 @@ async function sendInvite() {
     showInvite.value = false
   } catch (e) {
     toast.show(e, 'error')
+  }
+}
+
+async function removeMember(member) {
+  if (!window.confirm(`确定将 ${member.name} 移出队伍？`)) return
+  removingId.value = member.user_id
+  try {
+    const res = await teamApi.removeMember(team.value.id, member.user_id)
+    toast.show(res.message || '已移除成员')
+    await load()
+  } catch (e) {
+    toast.show(e, 'error')
+  } finally {
+    removingId.value = 0
   }
 }
 
@@ -256,6 +271,26 @@ onMounted(load)
         <div>
           <label for="edit-team-desc" class="text-sm font-medium text-ink-primary block mb-1.5">队伍描述</label>
           <textarea id="edit-team-desc" v-model="editForm.desc" class="input-field" rows="3" maxlength="2000"></textarea>
+        </div>
+        <!-- 成员管理（移除队友） -->
+        <div v-if="(team.members || []).some((m) => !m.is_leader)">
+          <h3 class="text-sm font-medium text-ink-primary mb-3">成员管理</h3>
+          <div class="space-y-2">
+            <div v-for="m in (team.members || []).filter((x) => !x.is_leader)" :key="m.user_id"
+              class="flex items-center justify-between gap-3 p-2.5 bg-page rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="avatar w-8 h-8 !text-xs">{{ (m.name || '?')[0] }}</div>
+                <div class="min-w-0">
+                  <span class="text-sm font-medium text-ink-primary">{{ m.name }}</span>
+                  <span class="text-xs text-ink-muted ml-2">{{ m.school }} · {{ m.grade }}</span>
+                </div>
+              </div>
+              <button class="text-xs font-medium text-danger hover:underline flex-shrink-0"
+                :disabled="removingId === m.user_id" @click="removeMember(m)">
+                {{ removingId === m.user_id ? '移除中...' : '移除' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="flex gap-3 mt-8">

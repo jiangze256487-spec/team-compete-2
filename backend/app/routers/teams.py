@@ -211,6 +211,10 @@ def leave_team(team_id: int, user: User = Depends(get_current_user), db: Session
     if member.is_leader:
         raise HTTPException(status_code=400, detail="队长请先转让或解散队伍")
     db.delete(member)
+    member_count = len(team.members) if team else 0
+    # 队伍曾满员时，成员退出后恢复招募中
+    if team and team.status == "已满" and member_count - 1 < team.max_members:
+        team.status = "招募中"
     # 给队长发离队提醒
     if team:
         db.add(Notification(
@@ -219,3 +223,33 @@ def leave_team(team_id: int, user: User = Depends(get_current_user), db: Session
         ))
     db.commit()
     return {"message": "已退出队伍"}
+
+
+@router.post("/{team_id}/members/{user_id}/remove")
+def remove_member(team_id: int, user_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """队长移除指定成员"""
+    team = db.get(Team, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="队伍不存在")
+    if team.leader_id != user.id:
+        raise HTTPException(status_code=403, detail="仅队长可移除成员")
+    if user_id == team.leader_id:
+        raise HTTPException(status_code=400, detail="不能移除队长本人")
+    member = db.query(TeamMember).filter(
+        TeamMember.team_id == team_id, TeamMember.user_id == user_id
+    ).first()
+    if not member:
+        raise HTTPException(status_code=400, detail="对方不在该队伍中")
+    removed_user = db.get(User, user_id)
+    member_count = len(team.members)
+    db.delete(member)
+    # 队伍曾满员时，移除后恢复招募中
+    if team.status == "已满" and member_count - 1 < team.max_members:
+        team.status = "招募中"
+    # 给被移除者发通知
+    db.add(Notification(
+        user_id=user_id, type="team", title="已被移出队伍",
+        content=f"你已被移出队伍「{team.name}」",
+    ))
+    db.commit()
+    return {"message": f"已移除成员{removed_user.name if removed_user else ''}"}
