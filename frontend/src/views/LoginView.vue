@@ -1,8 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { grades } from '@/constants/tags'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -12,40 +13,93 @@ const authPage = ref('login')
 const loading = ref(false)
 
 const loginForm = ref({ student_id: '', password: '' })
-const regForm = ref({ student_id: '', name: '', school: '', major: '', grade: '', password: '' })
-const grades = ['大一', '大二', '大三', '大四', '研一', '研二', '研三']
+const regForm = ref({ student_id: '', name: '', school: '', major: '', grade: '', password: '', confirm: '' })
+
+const loginErrors = reactive({ student_id: '', password: '' })
+const regErrors = reactive({ student_id: '', name: '', password: '', confirm: '' })
+
+function validStudentId(v) {
+  return typeof v === 'string' && v.trim().length >= 4
+}
 
 async function handleLogin() {
-  if (!loginForm.value.student_id || !loginForm.value.password) {
-    toast.show('请输入学号和密码')
-    return
+  loginErrors.student_id = ''
+  loginErrors.password = ''
+  let invalid = false
+  if (!loginForm.value.student_id) {
+    loginErrors.student_id = '请输入学号'
+    invalid = true
+  } else if (!validStudentId(loginForm.value.student_id)) {
+    loginErrors.student_id = '学号格式不正确'
+    invalid = true
   }
+  if (!loginForm.value.password) {
+    loginErrors.password = '请输入密码'
+    invalid = true
+  }
+  if (invalid) return
+
   loading.value = true
   try {
-    await auth.login(loginForm.value)
+    await auth.login({ student_id: loginForm.value.student_id.trim(), password: loginForm.value.password })
     router.push('/')
   } catch (e) {
-    toast.show(e)
+    toast.show(e, 'error')
   } finally {
     loading.value = false
   }
 }
 
+function validateRegister() {
+  regErrors.student_id = ''
+  regErrors.name = ''
+  regErrors.password = ''
+  regErrors.confirm = ''
+  let invalid = false
+
+  if (!regForm.value.student_id) {
+    regErrors.student_id = '请输入学号'
+    invalid = true
+  } else if (!validStudentId(regForm.value.student_id)) {
+    regErrors.student_id = '学号格式不正确（至少 4 位）'
+    invalid = true
+  }
+  if (!regForm.value.name) {
+    regErrors.name = '请输入姓名'
+    invalid = true
+  }
+  if (!regForm.value.password) {
+    regErrors.password = '请设置密码'
+    invalid = true
+  } else if (regForm.value.password.length < 6) {
+    regErrors.password = '密码至少 6 位'
+    invalid = true
+  }
+  if (!regForm.value.confirm) {
+    regErrors.confirm = '请再次输入密码'
+    invalid = true
+  } else if (regForm.value.confirm !== regForm.value.password) {
+    regErrors.confirm = '两次输入的密码不一致'
+    invalid = true
+  }
+  return !invalid
+}
+
 async function handleRegister() {
-  if (!regForm.value.student_id || !regForm.value.name || !regForm.value.password) {
-    toast.show('请填写学号、姓名和密码')
-    return
-  }
-  if (regForm.value.password.length < 6) {
-    toast.show('密码至少 6 位')
-    return
-  }
+  if (!validateRegister()) return
   loading.value = true
   try {
-    await auth.register(regForm.value)
+    await auth.register({
+      student_id: regForm.value.student_id.trim(),
+      name: regForm.value.name.trim(),
+      school: regForm.value.school.trim(),
+      major: regForm.value.major.trim(),
+      grade: regForm.value.grade,
+      password: regForm.value.password
+    })
     router.push('/')
   } catch (e) {
-    toast.show(e)
+    toast.show(e, 'error')
   } finally {
     loading.value = false
   }
@@ -66,14 +120,16 @@ async function handleRegister() {
       </div>
       <div class="space-y-4">
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">学号</label>
-          <input v-model="loginForm.student_id" type="text" class="input-field" placeholder="请输入学号">
+          <label for="login-student-id" class="text-sm font-medium text-ink-primary block mb-1.5">学号</label>
+          <input id="login-student-id" v-model="loginForm.student_id" type="text" class="input-field" placeholder="请输入学号" :class="{ 'border-danger': loginErrors.student_id }">
+          <p v-if="loginErrors.student_id" class="text-xs text-danger mt-1">{{ loginErrors.student_id }}</p>
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">密码</label>
-          <input v-model="loginForm.password" type="password" class="input-field" placeholder="请输入密码" @keyup.enter="handleLogin">
+          <label for="login-password" class="text-sm font-medium text-ink-primary block mb-1.5">密码</label>
+          <input id="login-password" v-model="loginForm.password" type="password" class="input-field" placeholder="请输入密码" :class="{ 'border-danger': loginErrors.password }" @keyup.enter="handleLogin">
+          <p v-if="loginErrors.password" class="text-xs text-danger mt-1">{{ loginErrors.password }}</p>
         </div>
-        <button class="btn-primary w-full py-3 text-base" :disabled="loading" @click="handleLogin">登 录</button>
+        <button class="btn-primary w-full py-3 text-base" :disabled="loading" @click="handleLogin">{{ loading ? '登录中...' : '登 录' }}</button>
       </div>
       <p class="text-center text-sm text-ink-secondary mt-6">
         还没有账号？<span class="text-primary font-medium cursor-pointer hover:underline" @click="authPage = 'register'">学号注册</span>
@@ -91,33 +147,41 @@ async function handleRegister() {
       </div>
       <div class="space-y-4">
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">学号</label>
-          <input v-model="regForm.student_id" type="text" class="input-field" placeholder="请输入学号">
+          <label for="reg-student-id" class="text-sm font-medium text-ink-primary block mb-1.5">学号</label>
+          <input id="reg-student-id" v-model="regForm.student_id" type="text" class="input-field" placeholder="请输入学号" :class="{ 'border-danger': regErrors.student_id }">
+          <p v-if="regErrors.student_id" class="text-xs text-danger mt-1">{{ regErrors.student_id }}</p>
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">姓名</label>
-          <input v-model="regForm.name" type="text" class="input-field" placeholder="请输入真实姓名">
+          <label for="reg-name" class="text-sm font-medium text-ink-primary block mb-1.5">姓名</label>
+          <input id="reg-name" v-model="regForm.name" type="text" class="input-field" placeholder="请输入真实姓名" :class="{ 'border-danger': regErrors.name }">
+          <p v-if="regErrors.name" class="text-xs text-danger mt-1">{{ regErrors.name }}</p>
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">学校</label>
-          <input v-model="regForm.school" type="text" class="input-field" placeholder="请输入学校名称">
+          <label for="reg-school" class="text-sm font-medium text-ink-primary block mb-1.5">学校</label>
+          <input id="reg-school" v-model="regForm.school" type="text" class="input-field" placeholder="请输入学校名称">
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">专业</label>
-          <input v-model="regForm.major" type="text" class="input-field" placeholder="请输入专业">
+          <label for="reg-major" class="text-sm font-medium text-ink-primary block mb-1.5">专业</label>
+          <input id="reg-major" v-model="regForm.major" type="text" class="input-field" placeholder="请输入专业">
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">年级</label>
-          <select v-model="regForm.grade" class="input-field">
+          <label for="reg-grade" class="text-sm font-medium text-ink-primary block mb-1.5">年级</label>
+          <select id="reg-grade" v-model="regForm.grade" class="input-field">
             <option value="">请选择年级</option>
             <option v-for="g in grades" :key="g" :value="g">{{ g }}</option>
           </select>
         </div>
         <div>
-          <label class="text-sm font-medium text-ink-primary block mb-1.5">密码</label>
-          <input v-model="regForm.password" type="password" class="input-field" placeholder="请设置密码（至少6位）">
+          <label for="reg-password" class="text-sm font-medium text-ink-primary block mb-1.5">密码</label>
+          <input id="reg-password" v-model="regForm.password" type="password" class="input-field" placeholder="请设置密码（至少6位）" :class="{ 'border-danger': regErrors.password }">
+          <p v-if="regErrors.password" class="text-xs text-danger mt-1">{{ regErrors.password }}</p>
         </div>
-        <button class="btn-primary w-full py-3 text-base" :disabled="loading" @click="handleRegister">注 册</button>
+        <div>
+          <label for="reg-confirm" class="text-sm font-medium text-ink-primary block mb-1.5">确认密码</label>
+          <input id="reg-confirm" v-model="regForm.confirm" type="password" class="input-field" placeholder="请再次输入密码" :class="{ 'border-danger': regErrors.confirm }" @keyup.enter="handleRegister">
+          <p v-if="regErrors.confirm" class="text-xs text-danger mt-1">{{ regErrors.confirm }}</p>
+        </div>
+        <button class="btn-primary w-full py-3 text-base" :disabled="loading" @click="handleRegister">{{ loading ? '注册中...' : '注 册' }}</button>
       </div>
       <p class="text-center text-sm text-ink-secondary mt-6">
         已有账号？<span class="text-primary font-medium cursor-pointer hover:underline" @click="authPage = 'login'">去登录</span>
