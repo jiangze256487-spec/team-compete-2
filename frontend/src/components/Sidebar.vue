@@ -1,18 +1,40 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { notiApi } from '@/api/notifications'
+import { useNotiStore } from '@/stores/notifications'
 
 defineProps({ title: String })
 defineEmits(['logout'])
 
 const route = useRoute()
 const auth = useAuthStore()
+const notiStore = useNotiStore()
 
-const unreadCount = ref(0)
 let pollTimer = null
 
+function startPoll() {
+  if (!pollTimer) pollTimer = setInterval(notiStore.fetchUnread, 15000)
+}
+
+function stopPoll() {
+  clearInterval(pollTimer)
+  pollTimer = null
+}
+
+function onVisibilityChange() {
+  if (document.hidden) stopPoll()
+  else startPoll()
+}
+
+onMounted(() => {
+  notiStore.fetchUnread()
+  startPoll()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+onUnmounted(() => {
+  stopPoll()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 async function fetchUnread() {
   try {
     const list = await notiApi.list({ unread_only: true })
@@ -56,7 +78,7 @@ function isActive(name) {
         class="nav-item" :class="{ active: isActive(item.name) }">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/></svg>
         {{ item.label }}
-        <span v-if="item.name === 'notifications' && unreadCount > 0" class="badge">{{ unreadCount }}</span>
+        <span v-if="item.name === 'notifications' && notiStore.unread > 0" class="badge">{{ notiStore.unread }}</span>
       </router-link>
     </nav>
     <div class="p-3 border-t border-line">

@@ -24,5 +24,8 @@ export const teamApi = {
   },
   leave(id) {
     return api.post(`/teams/${id}/leave`)
+  },
+  removeMember(id, userId) {
+    return api.post(`/teams/${id}/members/${userId}/remove`)
   }
 }
