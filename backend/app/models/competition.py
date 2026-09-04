@@ -1,7 +1,7 @@
 """赛事模型"""
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, SmallInteger, String, Text
+from sqlalchemy import Integer, DateTime, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -10,7 +10,7 @@ from ..database import Base
 class Competition(Base):
     __tablename__ = "competitions"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     category: Mapped[str | None] = mapped_column(String(50))
     organizer: Mapped[str | None] = mapped_column(String(100))
