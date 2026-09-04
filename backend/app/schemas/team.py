@@ -26,20 +26,17 @@ class TeamOut(BaseModel):
     max_members: int = 4
     tags: list[str] = []
     members_count: int = 0
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+    created_at: datetime | None = None  # 新表无 created_at，用队长入队时间近似
 
 
 class TeamDetail(TeamOut):
     members: list[MemberBrief] = []
-    # 当前登录用户对该队伍的申请状态（"" / pending），供前端展示"已申请，等待审核"
     my_application_status: str = ""
 
 
 class TeamCreate(BaseModel):
     name: str
-    event_name: str = ""
+    event_name: str = ""  # 前端传赛事名，后端映射到 competition_id
     desc: str = ""
     max_members: int = 4
     tags: list[str] = []

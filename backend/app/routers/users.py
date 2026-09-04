@@ -1,47 +1,41 @@
 """用户路由：个人资料与标签"""
-import json
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..core.deps import get_current_user, get_optional_user
 from ..database import get_db
 from ..models import TeamMember, User
 from ..schemas import UserOut, UserTagsUpdate, UserUpdate
+from ..serializers import serialize_user, set_user_tags
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
-
-def _load_json(raw: str) -> list[str]:
-    try:
-        return json.loads(raw or "[]")
-    except json.JSONDecodeError:
-        return []
+# 对外字段名 -> 模型字段名
+_UPDATE_FIELDS = {"name": "nickname", "school": "school", "major": "major", "grade": "grade", "phone": "phone"}
 
 
 @router.get("/me", response_model=UserOut)
-def get_me(user: User = Depends(get_current_user)):
-    return user
+def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return serialize_user(db, user)
 
 
 @router.put("/me", response_model=UserOut)
 def update_me(data: UserUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    for field in ["name", "school", "major", "grade", "phone"]:
-        value = getattr(data, field)
+    for api_field, model_field in _UPDATE_FIELDS.items():
+        value = getattr(data, api_field)
         if value is not None:
-            setattr(user, field, value)
+            setattr(user, model_field, value)
     db.commit()
     db.refresh(user)
-    return user
+    return serialize_user(db, user)
 
 
 @router.put("/me/tags", response_model=UserOut)
 def update_tags(data: UserTagsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    user.skills = json.dumps(data.skills, ensure_ascii=False)
-    user.attrs = json.dumps(data.attrs, ensure_ascii=False)
+    set_user_tags(db, user.id, data.skills, data.attrs)
     db.commit()
     db.refresh(user)
-    return user
+    return serialize_user(db, user)
 
 
 def _shares_team(db: Session, a: int, b: int) -> bool:
