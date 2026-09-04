@@ -79,7 +79,7 @@ def handle_action(noti_id: int, data: NotificationAction, user: User = Depends(g
             if _active_count(db, team.id) >= team.max_members:
                 team.status = 1
             db.add(Notification(
-                user_id=req.user_id, type=3,
+                user_id=req.user_id, type=4,
                 content=f"你已加入队伍「{team.name}」",
                 related_type="team", related_id=team.id,
             ))
@@ -111,7 +111,7 @@ def handle_action(noti_id: int, data: NotificationAction, user: User = Depends(g
             if _active_count(db, team.id) >= team.max_members:
                 team.status = 1
             db.add(Notification(
-                user_id=team.captain_id, type=3,
+                user_id=team.captain_id, type=4,
                 content=f"{user.nickname or ''} 已接受邀请加入队伍「{team.name}」",
                 related_type="team", related_id=team.id,
             ))
