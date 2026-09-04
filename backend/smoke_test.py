@@ -32,6 +32,7 @@ with TestClient(app) as client:
     r = client.post("/api/auth/register", json={
         "student_id": "20260001", "password": "123456", "name": "张三",
         "school": "示例大学", "major": "计算机", "grade": "2026级",
+        "phone": "13800000001",
     })
     assert r.status_code == 200, r.text
     token_a = r.json()["access_token"]
@@ -41,6 +42,7 @@ with TestClient(app) as client:
     r = client.post("/api/auth/register", json={
         "student_id": "20260002", "password": "123456", "name": "李四",
         "school": "示例大学", "major": "软件工程", "grade": "2025级",
+        "phone": "13800000002",
     })
     assert r.status_code == 200, r.text
     token_b = r.json()["access_token"]
@@ -112,13 +114,13 @@ with TestClient(app) as client:
     assert r.status_code == 200 and len(r.json()) >= 5, r.text
     ok("GET /api/events/categories 内置分类")
 
-    # 15. 赛事创建与列表
+    # 15. 赛事创建与列表（用独立分类，避免与种子演示赛事冲突）
     r = client.post("/api/events", json={
-        "name": "全国大学生数学建模竞赛", "category": "数学建模类",
-        "org": "中国工业与应用数学学会", "deadline": "2026-09-30",
+        "name": "测试专用赛事", "category": "测试类",
+        "org": "测试组委会", "deadline": "2026-09-30",
     })
     assert r.status_code == 201, r.text
-    r = client.get("/api/events", params={"category": "数学建模类"})
+    r = client.get("/api/events", params={"category": "测试类"})
     assert r.status_code == 200 and len(r.json()) == 1, r.text
     ok("POST/GET /api/events 赛事")
 

@@ -16,12 +16,13 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     if db.query(User).filter(User.student_no == data.student_id).first():
         raise HTTPException(status_code=400, detail="该学号已被注册")
     user = User(
-        student_no=data.student_id,
-        nickname=data.name,
-        school=data.school or None,
-        major=data.major or None,
-        grade=data.grade or None,
-        password=hash_password(data.password),
+        student_id=data.student_id,
+        name=data.name,
+        school=data.school,
+        major=data.major,
+        grade=data.grade,
+        phone=data.phone,
+        password_hash=hash_password(data.password),
     )
     db.add(user)
     db.commit()

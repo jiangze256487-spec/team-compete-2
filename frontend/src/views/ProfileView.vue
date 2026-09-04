@@ -173,7 +173,8 @@ onMounted(load)
         </div>
         <div>
           <label for="pf-phone" class="text-sm font-medium text-ink-primary block mb-1.5">联系电话</label>
-          <input id="pf-phone" v-model="profileForm.phone" type="text" maxlength="20" class="input-field" placeholder="选填">
+          <input id="pf-phone" v-model="profileForm.phone" type="text" maxlength="20" class="input-field" placeholder="请输入手机号/微信">
+          <p class="text-xs text-ink-muted mt-1">仅同队成员（入队后）可见</p>
         </div>
       </div>
       <div class="flex gap-3 mt-8">

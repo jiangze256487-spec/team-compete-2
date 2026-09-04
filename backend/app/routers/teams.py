@@ -18,35 +18,48 @@ from ..serializers import (
 router = APIRouter(prefix="/api/teams", tags=["队伍"])
 
 
-def _find_competition(db: Session, name: str) -> Competition | None:
-    if name:
-        return db.query(Competition).filter(Competition.name == name).first()
-    return db.query(Competition).first()
+def _load_json(raw: str) -> list[str]:
+    try:
+        return json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
 
 
-def _active_members(db: Session, team_id: int) -> list[TeamMember]:
-    return db.query(TeamMember).filter(
-        TeamMember.team_id == team_id, TeamMember.leave_at.is_(None)
-    ).all()
+def _serialize_team(db: Session, team: Team) -> dict:
+    members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+    leader = db.get(User, team.leader_id)
+    return {
+        "id": team.id,
+        "name": team.name,
+        "leader_id": team.leader_id,
+        "leader_name": leader.name if leader else "",
+        "event_name": team.event_name,
+        "school": team.school,
+        "desc": team.desc,
+        "status": team.status,
+        "max_members": team.max_members,
+        "tags": _load_json(team.tags),
+        "members_count": len(members),
+        "created_at": team.created_at,
+    }
 
 
-def _reopen_if_not_full(db: Session, team: Team) -> None:
-    if not team or team.status != 1:
-        return
-    if len(_active_members(db, team.id)) < team.max_members:
-        team.status = 0
-
-
-def _serialize_detail(db: Session, team: Team, current_user_id: int | None) -> dict:
-    data = serialize_team(db, team)
-    data["members"] = serialize_team_members(db, team.id)
-    if current_user_id is not None:
-        applied = db.query(JoinRequest).filter(
-            JoinRequest.team_id == team.id,
-            JoinRequest.user_id == current_user_id,
-            JoinRequest.status == 0,
-        ).first()
-        data["my_application_status"] = "pending" if applied else ""
+def _serialize_detail(db: Session, team: Team, viewer_id: int | None = None) -> dict:
+    data = _serialize_team(db, team)
+    members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+    # 联系方式隐私：仅队伍成员可见队友电话（申请同意/入队后）
+    viewer_is_member = viewer_id is not None and any(m.user_id == viewer_id for m in members)
+    briefs = []
+    for m in members:
+        u = db.get(User, m.user_id)
+        if not u:
+            continue
+        briefs.append(MemberBrief(
+            user_id=u.id, name=u.name, school=u.school, grade=u.grade,
+            phone=u.phone if viewer_is_member else "",
+            skills=_load_json(u.skills), is_leader=m.is_leader,
+        ))
+    data["members"] = briefs
     return data
 
 
@@ -100,7 +113,7 @@ def create_team(data: TeamCreate, user: User = Depends(get_current_user), db: Se
     set_team_tags(db, team.id, data.tags)
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team, user.id)
+    return _serialize_detail(db, team, viewer_id=user.id)
 
 
 @router.get("/{team_id}", response_model=TeamDetail)
@@ -108,7 +121,15 @@ def get_team(team_id: int, user: User | None = Depends(get_optional_user), db: S
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    return _serialize_detail(db, team, user.id if user else None)
+    data = _serialize_detail(db, team, viewer_id=user.id if user else None)
+    if user is not None:
+        applied = db.query(TeamApplication).filter(
+            TeamApplication.team_id == team_id,
+            TeamApplication.user_id == user.id,
+            TeamApplication.status == "pending",
+        ).first()
+        data["my_application_status"] = "pending" if applied else ""
+    return data
 
 
 @router.patch("/{team_id}", response_model=TeamDetail)
@@ -134,7 +155,7 @@ def update_team(team_id: int, data: TeamUpdate, user: User = Depends(get_current
         set_team_tags(db, team.id, data.tags)
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team, user.id)
+    return _serialize_detail(db, team, viewer_id=user.id)
 
 
 @router.delete("/{team_id}")
