@@ -1,56 +1,52 @@
 """队伍路由：列表 / 创建 / 详情 / 申请 / 邀请"""
-import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..core.deps import get_current_user, get_optional_user
 from ..database import get_db
-from ..models import Notification, Team, TeamApplication, TeamMember, User
-from ..schemas import ApplyResult, MemberBrief, TeamCreate, TeamDetail, TeamOut, TeamUpdate
+from ..models import Competition, Invitation, JoinRequest, Notification, Team, TeamMember, User
+from ..schemas import ApplyResult, TeamCreate, TeamDetail, TeamOut, TeamUpdate
+from ..serializers import (
+    TEAM_STATUS_REVERSE,
+    serialize_team,
+    serialize_team_members,
+    set_team_tags,
+)
 
 router = APIRouter(prefix="/api/teams", tags=["队伍"])
 
 
-def _load_json(raw: str) -> list[str]:
-    try:
-        return json.loads(raw or "[]")
-    except json.JSONDecodeError:
-        return []
+def _find_competition(db: Session, name: str) -> Competition | None:
+    if name:
+        return db.query(Competition).filter(Competition.name == name).first()
+    return db.query(Competition).first()
 
 
-def _serialize_team(db: Session, team: Team) -> dict:
-    members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
-    leader = db.get(User, team.leader_id)
-    return {
-        "id": team.id,
-        "name": team.name,
-        "leader_id": team.leader_id,
-        "leader_name": leader.name if leader else "",
-        "event_name": team.event_name,
-        "school": team.school,
-        "desc": team.desc,
-        "status": team.status,
-        "max_members": team.max_members,
-        "tags": _load_json(team.tags),
-        "members_count": len(members),
-        "created_at": team.created_at,
-    }
+def _active_members(db: Session, team_id: int) -> list[TeamMember]:
+    return db.query(TeamMember).filter(
+        TeamMember.team_id == team_id, TeamMember.leave_at.is_(None)
+    ).all()
 
 
-def _serialize_detail(db: Session, team: Team) -> dict:
-    data = _serialize_team(db, team)
-    members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
-    briefs = []
-    for m in members:
-        u = db.get(User, m.user_id)
-        if not u:
-            continue
-        briefs.append(MemberBrief(
-            user_id=u.id, name=u.name, school=u.school, grade=u.grade,
-            skills=_load_json(u.skills), is_leader=m.is_leader,
-        ))
-    data["members"] = briefs
+def _reopen_if_not_full(db: Session, team: Team) -> None:
+    if not team or team.status != 1:
+        return
+    if len(_active_members(db, team.id)) < team.max_members:
+        team.status = 0
+
+
+def _serialize_detail(db: Session, team: Team, current_user_id: int | None) -> dict:
+    data = serialize_team(db, team)
+    data["members"] = serialize_team_members(db, team.id)
+    if current_user_id is not None:
+        applied = db.query(JoinRequest).filter(
+            JoinRequest.team_id == team.id,
+            JoinRequest.user_id == current_user_id,
+            JoinRequest.status == 0,
+        ).first()
+        data["my_application_status"] = "pending" if applied else ""
     return data
 
 
@@ -62,20 +58,20 @@ def list_teams(
     grade: str = "",
     db: Session = Depends(get_db),
 ):
-    teams = db.query(Team).order_by(Team.created_at.desc()).all()
+    teams = db.query(Team).order_by(Team.id.desc()).all()
     result = []
     for t in teams:
-        data = _serialize_team(db, t)
+        data = serialize_team(db, t)
         if search:
-            haystack = f"{t.name} {t.desc} {t.event_name} {' '.join(_load_json(t.tags))}"
+            haystack = f"{t.name} {t.description or ''} {data['event_name']} {' '.join(data['tags'])}"
             if search not in haystack:
                 continue
-        if event and t.event_name != event:
+        if event and data["event_name"] != event:
             continue
-        if skill and skill not in _load_json(t.tags):
+        if skill and skill not in data["tags"]:
             continue
         if grade:
-            members = db.query(TeamMember).filter(TeamMember.team_id == t.id).all()
+            members = _active_members(db, t.id)
             user_ids = [m.user_id for m in members]
             if user_ids:
                 has_grade = db.query(User).filter(User.id.in_(user_ids), User.grade == grade).first()
@@ -87,41 +83,32 @@ def list_teams(
 
 @router.post("", response_model=TeamDetail, status_code=201)
 def create_team(data: TeamCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    comp = _find_competition(db, data.event_name)
+    if not comp:
+        raise HTTPException(status_code=400, detail="未找到对应赛事，请先创建赛事")
     team = Team(
         name=data.name,
-        leader_id=user.id,
-        event_name=data.event_name,
-        school=user.school,
-        desc=data.desc,
+        competition_id=comp.id,
+        captain_id=user.id,
+        description=data.desc or None,
         max_members=max(data.max_members, 2),
-        tags=json.dumps(data.tags, ensure_ascii=False),
+        status=0,
     )
     db.add(team)
     db.flush()
-    db.add(TeamMember(team_id=team.id, user_id=user.id, is_leader=True))
+    db.add(TeamMember(team_id=team.id, user_id=user.id, role=1))
+    set_team_tags(db, team.id, data.tags)
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team)
+    return _serialize_detail(db, team, user.id)
 
 
 @router.get("/{team_id}", response_model=TeamDetail)
-def get_team(
-    team_id: int,
-    user: User | None = Depends(get_optional_user),
-    db: Session = Depends(get_db),
-):
+def get_team(team_id: int, user: User | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    data = _serialize_detail(db, team)
-    if user is not None:
-        applied = db.query(TeamApplication).filter(
-            TeamApplication.team_id == team_id,
-            TeamApplication.user_id == user.id,
-            TeamApplication.status == "pending",
-        ).first()
-        data["my_application_status"] = "pending" if applied else ""
-    return data
+    return _serialize_detail(db, team, user.id if user else None)
 
 
 @router.patch("/{team_id}", response_model=TeamDetail)
@@ -129,17 +116,25 @@ def update_team(team_id: int, data: TeamUpdate, user: User = Depends(get_current
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    if team.leader_id != user.id:
+    if team.captain_id != user.id:
         raise HTTPException(status_code=403, detail="仅队长可修改队伍")
-    for field in ["name", "event_name", "desc", "status", "max_members"]:
-        value = getattr(data, field)
-        if value is not None:
-            setattr(team, field, value)
+    if data.name is not None:
+        team.name = data.name
+    if data.desc is not None:
+        team.description = data.desc or None
+    if data.max_members is not None:
+        team.max_members = max(data.max_members, 2)
+    if data.event_name is not None:
+        comp = _find_competition(db, data.event_name)
+        if comp:
+            team.competition_id = comp.id
+    if data.status is not None:
+        team.status = TEAM_STATUS_REVERSE.get(data.status, team.status)
     if data.tags is not None:
-        team.tags = json.dumps(data.tags, ensure_ascii=False)
+        set_team_tags(db, team.id, data.tags)
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team)
+    return _serialize_detail(db, team, user.id)
 
 
 @router.delete("/{team_id}")
@@ -147,7 +142,7 @@ def delete_team(team_id: int, user: User = Depends(get_current_user), db: Sessio
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    if team.leader_id != user.id:
+    if team.captain_id != user.id:
         raise HTTPException(status_code=403, detail="仅队长可解散队伍")
     db.delete(team)
     db.commit()
@@ -159,22 +154,21 @@ def apply_team(team_id: int, user: User = Depends(get_current_user), db: Session
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    # 已在队内
-    if db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.user_id == user.id).first():
+    if db.query(TeamMember).filter(
+        TeamMember.team_id == team_id, TeamMember.user_id == user.id, TeamMember.leave_at.is_(None)
+    ).first():
         raise HTTPException(status_code=400, detail="你已是该队伍成员")
-    # 已有待处理申请
-    if db.query(TeamApplication).filter(
-        TeamApplication.team_id == team_id,
-        TeamApplication.user_id == user.id,
-        TeamApplication.status == "pending",
+    if db.query(JoinRequest).filter(
+        JoinRequest.team_id == team_id, JoinRequest.user_id == user.id, JoinRequest.status == 0
     ).first():
         raise HTTPException(status_code=400, detail="你已申请过该队伍，等待审核中")
-    db.add(TeamApplication(team_id=team_id, user_id=user.id, status="pending"))
-    # 给队长发通知
+    req = JoinRequest(team_id=team_id, user_id=user.id, status=0)
+    db.add(req)
+    db.flush()
     db.add(Notification(
-        user_id=team.leader_id, type="team", title="申请入队提醒",
-        content=f"{user.name} 申请加入你的队伍「{team.name}」",
-        action_type="apply", related_id=team.id,
+        user_id=team.captain_id, type=1,
+        content=f"{user.nickname or ''} 申请加入你的队伍「{team.name}」",
+        related_type="request", related_id=req.id,
     ))
     db.commit()
     return ApplyResult(message="申请已提交，等待队长审核")
@@ -182,21 +176,26 @@ def apply_team(team_id: int, user: User = Depends(get_current_user), db: Session
 
 @router.post("/{team_id}/invite", response_model=ApplyResult)
 def invite_user(team_id: int, invitee_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """队长邀请指定学号用户入队"""
+    """队长邀请指定用户入队"""
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    if team.leader_id != user.id:
+    if team.captain_id != user.id:
         raise HTTPException(status_code=403, detail="仅队长可邀请成员")
     invitee = db.get(User, invitee_id)
     if not invitee:
         raise HTTPException(status_code=404, detail="用户不存在")
-    if db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.user_id == invitee_id).first():
+    if db.query(TeamMember).filter(
+        TeamMember.team_id == team_id, TeamMember.user_id == invitee_id, TeamMember.leave_at.is_(None)
+    ).first():
         raise HTTPException(status_code=400, detail="对方已是该队伍成员")
+    inv = Invitation(team_id=team_id, user_id=invitee_id, inviter_id=user.id, status=0)
+    db.add(inv)
+    db.flush()
     db.add(Notification(
-        user_id=invitee_id, type="team", title="被邀请入队提醒",
-        content=f"{user.name} 邀请你加入队伍「{team.name}」",
-        action_type="invite", related_id=team.id,
+        user_id=invitee_id, type=2,
+        content=f"{user.nickname or ''} 邀请你加入队伍「{team.name}」",
+        related_type="invite", related_id=inv.id,
     ))
     db.commit()
     return ApplyResult(message="邀请已发送")
@@ -204,22 +203,21 @@ def invite_user(team_id: int, invitee_id: int, user: User = Depends(get_current_
 
 @router.post("/{team_id}/leave")
 def leave_team(team_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    member = db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.user_id == user.id).first()
+    member = db.query(TeamMember).filter(
+        TeamMember.team_id == team_id, TeamMember.user_id == user.id, TeamMember.leave_at.is_(None)
+    ).first()
     if not member:
         raise HTTPException(status_code=400, detail="你不在该队伍中")
     team = db.get(Team, team_id)
-    if member.is_leader:
+    if member.role == 1:
         raise HTTPException(status_code=400, detail="队长请先转让或解散队伍")
-    db.delete(member)
-    member_count = len(team.members) if team else 0
-    # 队伍曾满员时，成员退出后恢复招募中
-    if team and team.status == "已满" and member_count - 1 < team.max_members:
-        team.status = "招募中"
-    # 给队长发离队提醒
+    member.leave_at = datetime.now()
+    _reopen_if_not_full(db, team)
     if team:
         db.add(Notification(
-            user_id=team.leader_id, type="team", title="队友离队提醒",
-            content=f"{user.name} 已退出队伍「{team.name}」",
+            user_id=team.captain_id, type=3,
+            content=f"{user.nickname or ''} 已退出队伍「{team.name}」",
+            related_type="team", related_id=team.id,
         ))
     db.commit()
     return {"message": "已退出队伍"}
@@ -231,25 +229,22 @@ def remove_member(team_id: int, user_id: int, user: User = Depends(get_current_u
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    if team.leader_id != user.id:
+    if team.captain_id != user.id:
         raise HTTPException(status_code=403, detail="仅队长可移除成员")
-    if user_id == team.leader_id:
+    if user_id == team.captain_id:
         raise HTTPException(status_code=400, detail="不能移除队长本人")
     member = db.query(TeamMember).filter(
-        TeamMember.team_id == team_id, TeamMember.user_id == user_id
+        TeamMember.team_id == team_id, TeamMember.user_id == user_id, TeamMember.leave_at.is_(None)
     ).first()
     if not member:
         raise HTTPException(status_code=400, detail="对方不在该队伍中")
     removed_user = db.get(User, user_id)
-    member_count = len(team.members)
-    db.delete(member)
-    # 队伍曾满员时，移除后恢复招募中
-    if team.status == "已满" and member_count - 1 < team.max_members:
-        team.status = "招募中"
-    # 给被移除者发通知
+    member.leave_at = datetime.now()
+    _reopen_if_not_full(db, team)
     db.add(Notification(
-        user_id=user_id, type="team", title="已被移出队伍",
+        user_id=user_id, type=3,
         content=f"你已被移出队伍「{team.name}」",
+        related_type="team", related_id=team.id,
     ))
     db.commit()
-    return {"message": f"已移除成员{removed_user.name if removed_user else ''}"}
+    return {"message": f"已移除成员{removed_user.nickname if removed_user else ''}"}

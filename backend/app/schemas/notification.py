@@ -1,4 +1,4 @@
-"""通知相关序列化模型"""
+"""通知相关序列化模型（对外字段保持前端兼容）"""
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -13,8 +13,6 @@ class NotificationOut(BaseModel):
     action_type: str = ""
     related_id: int = 0
     created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class NotificationAction(BaseModel):
