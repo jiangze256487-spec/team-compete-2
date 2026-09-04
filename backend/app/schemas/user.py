@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class UserRegister(BaseModel):
+class UserBase(BaseModel):
     student_id: str  # 对应表 student_no
     name: str        # 对应表 nickname
     school: str = ""
