@@ -13,10 +13,10 @@ const authPage = ref('login')
 const loading = ref(false)
 
 const loginForm = ref({ student_id: '', password: '' })
-const regForm = ref({ student_id: '', name: '', school: '', major: '', grade: '', password: '', confirm: '' })
+const regForm = ref({ student_id: '', name: '', school: '', major: '', grade: '', phone: '', password: '', confirm: '' })
 
 const loginErrors = reactive({ student_id: '', password: '' })
-const regErrors = reactive({ student_id: '', name: '', password: '', confirm: '' })
+const regErrors = reactive({ student_id: '', name: '', phone: '', password: '', confirm: '' })
 
 function validStudentId(v) {
   return typeof v === 'string' && v.trim().length >= 4
@@ -53,6 +53,7 @@ async function handleLogin() {
 function validateRegister() {
   regErrors.student_id = ''
   regErrors.name = ''
+  regErrors.phone = ''
   regErrors.password = ''
   regErrors.confirm = ''
   let invalid = false
@@ -66,6 +67,10 @@ function validateRegister() {
   }
   if (!regForm.value.name) {
     regErrors.name = '请输入姓名'
+    invalid = true
+  }
+  if (!regForm.value.phone.trim()) {
+    regErrors.phone = '请输入联系电话'
     invalid = true
   }
   if (!regForm.value.password) {
@@ -95,6 +100,7 @@ async function handleRegister() {
       school: regForm.value.school.trim(),
       major: regForm.value.major.trim(),
       grade: regForm.value.grade,
+      phone: regForm.value.phone.trim(),
       password: regForm.value.password
     })
     router.push('/')
@@ -170,6 +176,11 @@ async function handleRegister() {
             <option value="">请选择年级</option>
             <option v-for="g in grades" :key="g" :value="g">{{ g }}</option>
           </select>
+        </div>
+        <div>
+          <label for="reg-phone" class="text-sm font-medium text-ink-primary block mb-1.5">联系电话</label>
+          <input id="reg-phone" v-model="regForm.phone" type="text" maxlength="20" class="input-field" placeholder="请输入手机号/微信" :class="{ 'border-danger': regErrors.phone }">
+          <p v-if="regErrors.phone" class="text-xs text-danger mt-1">{{ regErrors.phone }}</p>
         </div>
         <div>
           <label for="reg-password" class="text-sm font-medium text-ink-primary block mb-1.5">密码</label>

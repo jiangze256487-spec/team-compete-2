@@ -216,7 +216,7 @@ onMounted(load)
               <div>
                 <span class="text-sm font-medium text-ink-primary">{{ m.name }}</span>
                 <span v-if="m.is_leader" class="tag tag-orange ml-2">队长</span>
-                <div class="text-xs text-ink-muted mt-0.5">{{ m.school }} · {{ m.grade }}</div>
+                <div class="text-xs text-ink-muted mt-0.5">{{ m.school }} · {{ m.grade }}<span v-if="m.phone"> · 电话：{{ m.phone }}</span></div>
               </div>
             </div>
             <div class="flex gap-1.5 flex-wrap justify-end">
