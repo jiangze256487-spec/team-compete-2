@@ -1,7 +1,7 @@
 """用户模型"""
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, SmallInteger, String, func
+from sqlalchemy import Integer, DateTime, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -10,7 +10,7 @@ from ..database import Base
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     student_no: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     password: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(20))
