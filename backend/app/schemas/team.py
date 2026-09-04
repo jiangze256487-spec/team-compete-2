@@ -9,6 +9,7 @@ class MemberBrief(BaseModel):
     name: str
     school: str = ""
     grade: str = ""
+    phone: str = ""
     skills: list[str] = []
     is_leader: bool = False
 

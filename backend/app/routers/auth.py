@@ -20,6 +20,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
         school=data.school,
         major=data.major,
         grade=data.grade,
+        phone=data.phone,
         password_hash=hash_password(data.password),
     )
     db.add(user)

@@ -4,9 +4,9 @@ import json
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..core.deps import get_current_user
+from ..core.deps import get_current_user, get_optional_user
 from ..database import get_db
-from ..models import User
+from ..models import TeamMember, User
 from ..schemas import UserOut, UserTagsUpdate, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
@@ -44,10 +44,25 @@ def update_tags(data: UserTagsUpdate, user: User = Depends(get_current_user), db
     return user
 
 
+def _shares_team(db: Session, a: int, b: int) -> bool:
+    """判断两个用户是否同属至少一个队伍（即已成为队友）"""
+    teams_a = {m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == a).all()}
+    if not teams_a:
+        return False
+    return db.query(TeamMember).filter(
+        TeamMember.user_id == b, TeamMember.team_id.in_(teams_a)
+    ).first() is not None
+
+
 @router.get("/{user_id}", response_model=UserOut)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
+def get_user(user_id: int, db: Session = Depends(get_db), viewer: User | None = Depends(get_optional_user)):
+    target = db.get(User, user_id)
+    if not target:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="用户不存在")
-    return user
+    # 联系方式隐私：仅本人或同队成员可见电话
+    can_view_phone = viewer is not None and (viewer.id == target.id or _shares_team(db, viewer.id, target.id))
+    out = UserOut.model_validate(target)
+    if not can_view_phone:
+        out.phone = ""
+    return out

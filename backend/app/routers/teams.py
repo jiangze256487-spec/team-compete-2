@@ -38,9 +38,11 @@ def _serialize_team(db: Session, team: Team) -> dict:
     }
 
 
-def _serialize_detail(db: Session, team: Team) -> dict:
+def _serialize_detail(db: Session, team: Team, viewer_id: int | None = None) -> dict:
     data = _serialize_team(db, team)
     members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+    # 联系方式隐私：仅队伍成员可见队友电话（申请同意/入队后）
+    viewer_is_member = viewer_id is not None and any(m.user_id == viewer_id for m in members)
     briefs = []
     for m in members:
         u = db.get(User, m.user_id)
@@ -48,6 +50,7 @@ def _serialize_detail(db: Session, team: Team) -> dict:
             continue
         briefs.append(MemberBrief(
             user_id=u.id, name=u.name, school=u.school, grade=u.grade,
+            phone=u.phone if viewer_is_member else "",
             skills=_load_json(u.skills), is_leader=m.is_leader,
         ))
     data["members"] = briefs
@@ -101,7 +104,7 @@ def create_team(data: TeamCreate, user: User = Depends(get_current_user), db: Se
     db.add(TeamMember(team_id=team.id, user_id=user.id, is_leader=True))
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team)
+    return _serialize_detail(db, team, viewer_id=user.id)
 
 
 @router.get("/{team_id}", response_model=TeamDetail)
@@ -113,7 +116,7 @@ def get_team(
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="队伍不存在")
-    data = _serialize_detail(db, team)
+    data = _serialize_detail(db, team, viewer_id=user.id if user else None)
     if user is not None:
         applied = db.query(TeamApplication).filter(
             TeamApplication.team_id == team_id,
@@ -139,7 +142,7 @@ def update_team(team_id: int, data: TeamUpdate, user: User = Depends(get_current
         team.tags = json.dumps(data.tags, ensure_ascii=False)
     db.commit()
     db.refresh(team)
-    return _serialize_detail(db, team)
+    return _serialize_detail(db, team, viewer_id=user.id)
 
 
 @router.delete("/{team_id}")
