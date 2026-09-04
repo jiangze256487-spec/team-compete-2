@@ -20,7 +20,8 @@ NOTI_TITLE_MAP = {1: "入队申请", 2: "入队邀请", 3: "离队通知", 4: "�
 
 
 def get_or_create_tag(db: Session, name: str, tag_type: int) -> Tag:
-    tag = db.query(Tag).filter(Tag.name == name).first()
+    """按 (名称, 类型) 查找或创建——同一名称在不同类型下可各自成行"""
+    tag = db.query(Tag).filter(Tag.name == name, Tag.type == tag_type).first()
     if not tag:
         tag = Tag(name=name, type=tag_type)
         db.add(tag)
@@ -29,11 +30,12 @@ def get_or_create_tag(db: Session, name: str, tag_type: int) -> Tag:
 
 
 def get_user_tags(db: Session, user_id: int) -> tuple[list[str], list[str]]:
-    """返回 (skills, attrs)"""
+    """返回 (skills, attrs)，按标签 id 升序保证输出稳定"""
     rows = (
         db.query(Tag.name, Tag.type)
         .join(UserTag, UserTag.tag_id == Tag.id)
         .filter(UserTag.user_id == user_id)
+        .order_by(Tag.id)
         .all()
     )
     skills = [r[0] for r in rows if r[1] == TAG_SKILL]
@@ -56,6 +58,7 @@ def get_team_tags(db: Session, team_id: int) -> list[str]:
         db.query(Tag.name)
         .join(TeamTag, TeamTag.tag_id == Tag.id)
         .filter(TeamTag.team_id == team_id)
+        .order_by(Tag.id)
         .all()
     )
     return [r[0] for r in rows]

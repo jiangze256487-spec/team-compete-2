@@ -52,11 +52,10 @@ def _shares_team(db: Session, a: int, b: int) -> bool:
 def get_user(user_id: int, db: Session = Depends(get_db), viewer: User | None = Depends(get_optional_user)):
     target = db.get(User, user_id)
     if not target:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="用户不存在")
+    out = serialize_user(db, target)
     # 联系方式隐私：仅本人或同队成员可见电话
     can_view_phone = viewer is not None and (viewer.id == target.id or _shares_team(db, viewer.id, target.id))
-    out = UserOut.model_validate(target)
     if not can_view_phone:
         out.phone = ""
     return out

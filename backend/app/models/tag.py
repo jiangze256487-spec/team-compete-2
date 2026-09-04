@@ -1,15 +1,17 @@
 """标签模型"""
-from sqlalchemy import Integer, ForeignKey, SmallInteger, String
+from sqlalchemy import ForeignKey, Integer, SmallInteger, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
 
 
 class Tag(Base):
+    """全局标签：同一名称可存在于不同语境（技能/角色/队伍），按 (name, type) 区分"""
     __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("name", "type", name="uq_tag_name_type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(50))
     type: Mapped[int] = mapped_column(SmallInteger)  # 1技能 2角色 3其他
 
 
