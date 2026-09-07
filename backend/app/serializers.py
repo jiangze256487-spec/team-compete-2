@@ -18,6 +18,10 @@ TEAM_STATUS_REVERSE = {"招募中": 0, "已满员": 1, "已解散": 2}
 NOTI_TYPE_MAP = {1: "team", 2: "team", 3: "team", 4: "system"}
 NOTI_TITLE_MAP = {1: "入队申请", 2: "入队邀请", 3: "离队通知", 4: "系统通知"}
 
+# 需要用户处理（接受/拒绝）的通知：入队申请（队长处理）、入队邀请（受邀者处理）。
+# 其余通知（离队/已入队/系统消息等）只作告知，related_type="team" 仅表示关联队伍，不作为可操作动作。
+ACTIONABLE_NOTI_TYPES = ("request", "invite")
+
 
 def get_or_create_tag(db: Session, name: str, tag_type: int) -> Tag:
     """按 (名称, 类型) 查找或创建——同一名称在不同类型下可各自成行"""
@@ -144,7 +148,7 @@ def serialize_notification(n: Notification):
         title=NOTI_TITLE_MAP.get(n.type, "通知"),
         content=n.content,
         is_read=bool(n.is_read),
-        action_type=n.related_type or "",
+        action_type=n.related_type if n.related_type in ACTIONABLE_NOTI_TYPES else "",
         related_id=n.related_id or 0,
         created_at=n.created_at,
     )
