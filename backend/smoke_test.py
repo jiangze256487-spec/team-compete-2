@@ -64,9 +64,9 @@ with TestClient(app) as client:
     assert r.status_code == 200 and r.json()["skills"] == ["Python", "深度学习"], r.text
     ok("PUT /api/users/me/tags")
 
-    # 7. 创建队伍
+    # 7. 创建队伍（赛事须为 init_db 预置的竞赛）
     r = client.post("/api/teams", headers=ha, json={
-        "name": "AI挑战赛战队", "event_name": "全国大学生AI挑战赛",
+        "name": "AI挑战赛战队", "event_name": "全国大学生数学建模竞赛",
         "desc": "招会深度学习的队友", "max_members": 4,
         "tags": ["Python", "深度学习", "算法"],
     })
@@ -94,7 +94,7 @@ with TestClient(app) as client:
     r = client.get("/api/notifications", headers=ha)
     assert r.status_code == 200 and len(r.json()) == 1, r.text
     noti_id = r.json()[0]["id"]
-    assert r.json()[0]["action_type"] == "apply"
+    assert r.json()[0]["action_type"] == "request", r.text
     r = client.post(f"/api/notifications/{noti_id}/action", headers=ha, json={"action": "accept"})
     assert r.status_code == 200, r.text
     ok("POST /api/notifications/{id}/action 同意入队")
@@ -131,4 +131,23 @@ with TestClient(app) as client:
     assert r.json()["members_count"] == 1, r.text
     ok("POST /api/teams/{id}/leave 退出队伍")
 
-print(f"\n== 冒烟测试完成：{len(passed)}/16 项通过 ==")
+    # 17. 离队通知为告知类：action_type 必须为空（前端不应显示接受/拒绝按钮）
+    r = client.get("/api/notifications", headers=ha)
+    assert r.status_code == 200, r.text
+    notis_a = r.json()
+    leave_noti = next((x for x in notis_a if x["title"] == "离队通知"), None)
+    assert leave_noti is not None, notis_a
+    assert leave_noti["action_type"] == "", notis_a
+    # 队长侧其余通知（已处理的申请等）也不应残留可操作标记
+    assert all(x["action_type"] == "" for x in notis_a), notis_a
+    ok("离队通知 action_type 为空")
+
+    # 18. "你已加入队伍" 等告知类系统通知同样不可操作
+    r = client.get("/api/notifications", headers=hb)
+    assert r.status_code == 200, r.text
+    notis_b = r.json()
+    assert len(notis_b) >= 1, notis_b
+    assert all(x["action_type"] == "" for x in notis_b), notis_b
+    ok("告知类通知均无接受/拒绝标记")
+
+print(f"\n== 冒烟测试完成：{len(passed)} 项通过 ==")

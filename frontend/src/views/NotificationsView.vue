@@ -24,6 +24,14 @@ const iconMap = {
   system: { bg: '#F0F9FF', color: '#0EA5E9', path: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' }
 }
 
+// 只有待处理的「入队申请 / 入队邀请」才需要接受/拒绝操作；
+// 入队成功、离队、系统消息等告知类通知一律不展示操作按钮（action_type 为 "team"/"" 等时隐藏）。
+const ACTIONABLE_ACTION_TYPES = ['request', 'invite']
+
+function isActionable(n) {
+  return ACTIONABLE_ACTION_TYPES.includes(n.action_type)
+}
+
 const filteredNotifications = computed(() => {
   if (notiTab.value === 'all') return notifications.value
   return notifications.value.filter((n) => n.type === notiTab.value)
@@ -86,46 +94,51 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="p-8 max-w-3xl">
-    <h1 class="text-2xl font-bold text-ink-primary mb-8">通知中心</h1>
-    <div class="flex gap-6 mb-6">
-      <span v-for="tab in notiTabs" :key="tab.key"
-        class="text-sm font-medium cursor-pointer pb-2 border-b-2 transition-colors"
-        :class="notiTab === tab.key ? 'text-primary border-primary' : 'text-ink-muted border-transparent hover:text-ink-secondary'"
-        @click="notiTab = tab.key">{{ tab.label }}</span>
-    </div>
+  <!-- 容器宽度与组队广场（TeamsView）保持一致：空状态图标因此与「暂无队伍」位置对齐 -->
+  <div class="p-4 md:p-8 max-w-6xl">
+    <!-- 正文（标题/Tab/列表）维持窄栏阅读宽度 -->
+    <div class="max-w-3xl">
+      <h1 class="text-2xl font-bold text-ink-primary mb-8">通知中心</h1>
+      <div class="flex gap-6 mb-6">
+        <span v-for="tab in notiTabs" :key="tab.key"
+          class="text-sm font-medium cursor-pointer pb-2 border-b-2 transition-colors"
+          :class="notiTab === tab.key ? 'text-primary border-primary' : 'text-ink-muted border-transparent hover:text-ink-secondary'"
+          @click="notiTab = tab.key">{{ tab.label }}</span>
+      </div>
 
-    <div v-if="loading" class="space-y-3">
-      <div v-for="i in 4" :key="i" class="card p-4"><div class="skeleton h-4 mb-2"></div><div class="skeleton h-3 w-2/3"></div></div>
-    </div>
+      <div v-if="loading" class="space-y-3">
+        <div v-for="i in 4" :key="i" class="card p-4"><div class="skeleton h-4 mb-2"></div><div class="skeleton h-3 w-2/3"></div></div>
+      </div>
 
-    <div v-else class="space-y-3">
-      <div v-for="n in filteredNotifications" :key="n.id" class="card card-hover p-4 flex items-start gap-4"
-        :class="{ 'bg-primary-tint/30': !n.is_read }" @click="markRead(n)">
-        <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center" :style="{ background: iconOf(n.type).bg }">
-          <svg class="w-5 h-5" :style="{ color: iconOf(n.type).color }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconOf(n.type).path"/></svg>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-sm font-medium text-ink-primary">{{ n.title }}</span>
-            <span v-if="!n.is_read" class="w-2 h-2 rounded-full bg-danger flex-shrink-0"></span>
+      <div v-else class="space-y-3">
+        <div v-for="n in filteredNotifications" :key="n.id" class="card card-hover p-4 flex items-start gap-4"
+          :class="{ 'bg-primary-tint/30': !n.is_read }" @click="markRead(n)">
+          <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center" :style="{ background: iconOf(n.type).bg }">
+            <svg class="w-5 h-5" :style="{ color: iconOf(n.type).color }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconOf(n.type).path"/></svg>
           </div>
-          <p class="text-sm text-ink-secondary">{{ n.content }}</p>
-          <span class="text-xs text-ink-muted mt-1 block">{{ timeStr(n.created_at) }}</span>
-        </div>
-        <div v-if="n.action_type" class="flex gap-2 flex-shrink-0">
-          <button class="text-xs font-medium px-3 py-1.5 rounded-md gradient-brand text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'accept')">
-            {{ processingId === n.id ? '处理中...' : '接受' }}
-          </button>
-          <button class="text-xs font-medium px-3 py-1.5 rounded-md border border-line text-ink-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-            :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'decline')">
-            {{ processingId === n.id ? '处理中...' : '拒绝' }}
-          </button>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-sm font-medium text-ink-primary">{{ n.title }}</span>
+              <span v-if="!n.is_read" class="w-2 h-2 rounded-full bg-danger flex-shrink-0"></span>
+            </div>
+            <p class="text-sm text-ink-secondary">{{ n.content }}</p>
+            <span class="text-xs text-ink-muted mt-1 block">{{ timeStr(n.created_at) }}</span>
+          </div>
+          <div v-if="isActionable(n)" class="flex gap-2 flex-shrink-0">
+            <button class="text-xs font-medium px-3 py-1.5 rounded-md gradient-brand text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'accept')">
+              {{ processingId === n.id ? '处理中...' : '接受' }}
+            </button>
+            <button class="text-xs font-medium px-3 py-1.5 rounded-md border border-line text-ink-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="processingId === n.id" @click.stop="handleNotiAction(n, 'decline')">
+              {{ processingId === n.id ? '处理中...' : '拒绝' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- 空状态：置于外层容器、与列表窄栏同级，居中基准与组队广场空状态一致 -->
     <div v-if="!loading && filteredNotifications.length === 0" class="text-center py-20">
       <div class="w-20 h-20 rounded-full bg-[#F1F5F9] mx-auto mb-4 flex items-center justify-center">
         <svg class="w-10 h-10 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
