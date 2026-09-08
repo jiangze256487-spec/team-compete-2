@@ -128,3 +128,22 @@ def handle_action(noti_id: int, data: NotificationAction, user: User = Depends(g
     db.commit()
     db.refresh(noti)
     return serialize_notification(noti)
+
+
+@router.delete("/{noti_id}")
+def delete_notification(noti_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """删除单条通知（仅本人）"""
+    noti = db.get(Notification, noti_id)
+    if not noti or noti.user_id != user.id:
+        raise HTTPException(status_code=404, detail="通知不存在")
+    db.delete(noti)
+    db.commit()
+    return {"message": "已删除"}
+
+
+@router.delete("")
+def delete_all_notifications(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """一键清空当前用户的全部通知"""
+    db.query(Notification).filter(Notification.user_id == user.id).delete()
+    db.commit()
+    return {"message": "已清空全部通知"}
