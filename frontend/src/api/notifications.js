@@ -9,5 +9,11 @@ export const notiApi = {
   },
   action(id, action) {
     return api.post(`/notifications/${id}/action`, { action })
+  },
+  remove(id) {
+    return api.delete(`/notifications/${id}`)
+  },
+  removeAll() {
+    return api.delete('/notifications')
   }
 }
